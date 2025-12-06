@@ -1,68 +1,74 @@
+import os
 import json
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 
 DATA_FILE = "data.json"
 
+# ذخیره یا خواندن نرخ درهم
 def load_data():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {"dirham": 1, "products": []}
+    if not os.path.exists(DATA_FILE):
+        return {}
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
+# ست کردن نرخ درهم
 def set_dirham(update: Update, context: CallbackContext):
-    if not context.args:
-        update.message.reply_text("لطفاً قیمت درهم را وارد کنید.")
+    if len(context.args) != 1:
+        update.message.reply_text("استفاده صحیح: /setdirham <قیمت درهم>")
         return
     try:
-        dirham_price = float(context.args[0])
-        data = load_data()
-        data["dirham"] = dirham_price
-        save_data(data)
-        update.message.reply_text(f"✅ قیمت درهم به {dirham_price} تغییر کرد.")
+        price = float(context.args[0])
     except ValueError:
-        update.message.reply_text("❌ مقدار نامعتبر است، لطفاً عدد وارد کنید.")
+        update.message.reply_text("قیمت باید عدد باشد.")
+        return
+    data = load_data()
+    data["dirham"] = price
+    save_data(data)
+    update.message.reply_text(f"نرخ درهم روی {price} تنظیم شد.")
 
+# ارسال محصول به کانال با دکمه محاسبه قیمت
 def send_product(update: Update, context: CallbackContext):
     if len(context.args) < 3:
-        update.message.reply_text("❌ دستور اشتباه است. فرمت: /sendproduct نام_محصول ضریب توضیح")
+        update.message.reply_text("استفاده صحیح: /sendproduct <عنوان> <ضریب> <توضیح>")
         return
     try:
-        name = context.args[0]
-        coef = float(context.args[1])
+        title = context.args[0]
+        rate = float(context.args[1])
         description = " ".join(context.args[2:])
     except ValueError:
-        update.message.reply_text("❌ ضریب باید عدد باشد.")
+        update.message.reply_text("ضریب باید عدد باشد.")
         return
 
-    data = load_data()
-    products = data.get("products", [])
-    product = {"name": name, "coef": coef, "description": description}
-    products.append(product)
-    data["products"] = products
-    save_data(data)
-
-    # ایجاد دکمه inline برای محاسبه قیمت
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💰 محاسبه قیمت", callback_data=json.dumps({"coef": coef}))]
-    ])
-    context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"📦 محصول: {name}\n{description}",
-        reply_markup=keyboard
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("💰 محاسبه قیمت", callback_data=f"price:{rate}")]]
     )
 
+    channel_id = os.getenv("CHANNEL_ID")
+    update.message.bot.send_message(
+        chat_id=channel_id,
+        text=f"{title}\n{description}",
+        reply_markup=keyboard
+    )
+    update.message.reply_text("محصول ارسال شد ✅")
+
+# محاسبه قیمت هنگام کلیک روی دکمه
 def calculate_price(update: Update, context: CallbackContext):
     query = update.callback_query
-    if not query:
+    query.answer()
+    data = load_data()
+    dirham = data.get("dirham")
+    if not dirham:
+        query.edit_message_text("ابتدا نرخ درهم را با /setdirham تعیین کنید.")
         return
-    data = json.loads(query.data)
-    coef = data.get("coef", 1)
-    dirham = load_data().get("dirham", 1)
-    price = coef * dirham
-    query.answer(text=f"💵 قیمت امروز: {price:.2f} تومان", show_alert=True)
+    try:
+        rate = float(query.data.split(":")[1])
+    except:
+        query.edit_message_text("خطا در ضریب محصول.")
+        return
+    price = dirham * rate
+    query.answer(f"قیمت: {price} تومان", show_alert=True)
