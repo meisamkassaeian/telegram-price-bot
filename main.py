@@ -2,7 +2,7 @@ import os
 from flask import Flask, request
 from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, CallbackQueryHandler
-from bot import calculate_price, add_product, set_dirham
+from bot import set_dirham, add_product, calculate_price
 
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
