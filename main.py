@@ -1,21 +1,20 @@
 import os
 from flask import Flask, request
+from telegram import Bot, Update
 from telegram.ext import Dispatcher, CommandHandler, CallbackQueryHandler
-from telegram import Bot
 from bot import set_price, calculate_price
 
 TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # مثل https://mybot.onrender.com/webhook
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
-bot = Bot(TOKEN)
+bot = Bot(token=TOKEN)
 
 app = Flask(__name__)
 
-# Dispatcher
-from telegram.ext import Dispatcher
-dp = Dispatcher(bot, None, workers=0)
-dp.add_handler(CommandHandler("setprice", set_price))
-dp.add_handler(CallbackQueryHandler(calculate_price))
+# Dispatcher بدون Queue
+dispatcher = Dispatcher(bot, None, workers=0)
+dispatcher.add_handler(CommandHandler("setprice", set_price))
+dispatcher.add_handler(CallbackQueryHandler(calculate_price))
 
 
 @app.route("/")
@@ -25,12 +24,12 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    update = bot.update_queue.from_json(request.data.decode("utf-8"))
-    dp.process_update(update)
+    data = request.get_json(force=True)
+    update = Update.de_json(data, bot)
+    dispatcher.process_update(update)
     return "OK", 200
 
 
-# تنظیم وبهوک
 @app.route("/setwebhook")
 def set_webhook():
     url = f"{WEBHOOK_URL}/webhook"
