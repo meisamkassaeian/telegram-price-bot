@@ -1,11 +1,11 @@
 import os
 import json
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
 
 DATA_FILE = "data.json"
 
-# ذخیره یا خواندن نرخ درهم
+# ذخیره و خواندن داده‌ها
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {}
@@ -16,59 +16,58 @@ def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# ست کردن نرخ درهم
+# تعیین نرخ درهم
 def set_dirham(update: Update, context: CallbackContext):
     if len(context.args) != 1:
-        update.message.reply_text("استفاده صحیح: /setdirham <قیمت درهم>")
+        update.message.reply_text("لطفا مقدار درهم را وارد کنید. مثال: /setdirham 12000")
         return
     try:
         price = float(context.args[0])
+        data = load_data()
+        data["dirham"] = price
+        save_data(data)
+        update.message.reply_text(f"نرخ درهم به {price} تومان تنظیم شد.")
     except ValueError:
-        update.message.reply_text("قیمت باید عدد باشد.")
-        return
-    data = load_data()
-    data["dirham"] = price
-    save_data(data)
-    update.message.reply_text(f"نرخ درهم روی {price} تنظیم شد.")
+        update.message.reply_text("لطفا عدد معتبر وارد کنید.")
 
-# ارسال محصول به کانال با دکمه محاسبه قیمت
-def send_product(update: Update, context: CallbackContext):
-    if len(context.args) < 3:
-        update.message.reply_text("استفاده صحیح: /sendproduct <عنوان> <ضریب> <توضیح>")
+# افزودن محصول
+def add_product(update: Update, context: CallbackContext):
+    if len(context.args) < 2:
+        update.message.reply_text("لطفا نام محصول و ضریب را وارد کنید. مثال: /sendproduct ساعت_طلایی 3.5")
         return
     try:
-        title = context.args[0]
-        rate = float(context.args[1])
-        description = " ".join(context.args[2:])
+        name = context.args[0]
+        coefficient = float(context.args[1])
+        description = " ".join(context.args[2:]) if len(context.args) > 2 else ""
+        data = load_data()
+        if "products" not in data:
+            data["products"] = {}
+        data["products"][name] = {"coefficient": coefficient, "description": description}
+        save_data(data)
+
+        keyboard = [
+            [InlineKeyboardButton("💰 محاسبه قیمت", callback_data=name)]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        update.message.reply_text(f"{name}\n{description}", reply_markup=reply_markup)
     except ValueError:
         update.message.reply_text("ضریب باید عدد باشد.")
-        return
-
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("💰 محاسبه قیمت", callback_data=f"price:{rate}")]]
-    )
-
-    channel_id = os.getenv("CHANNEL_ID")
-    update.message.bot.send_message(
-        chat_id=channel_id,
-        text=f"{title}\n{description}",
-        reply_markup=keyboard
-    )
-    update.message.reply_text("محصول ارسال شد ✅")
 
 # محاسبه قیمت هنگام کلیک روی دکمه
 def calculate_price(update: Update, context: CallbackContext):
     query = update.callback_query
-    query.answer()
+    if not query:
+        return
+    product_name = query.data
     data = load_data()
     dirham = data.get("dirham")
     if not dirham:
-        query.edit_message_text("ابتدا نرخ درهم را با /setdirham تعیین کنید.")
+        query.answer("نرخ درهم تنظیم نشده!", show_alert=True)
         return
-    try:
-        rate = float(query.data.split(":")[1])
-    except:
-        query.edit_message_text("خطا در ضریب محصول.")
+    product = data.get("products", {}).get(product_name)
+    if not product:
+        query.answer("محصول یافت نشد!", show_alert=True)
         return
-    price = dirham * rate
-    query.answer(f"قیمت: {price} تومان", show_alert=True)
+
+    price = product["coefficient"] * dirham
+    query.answer(text=f"قیمت {product_name}: {price:,} تومان", show_alert=True)
