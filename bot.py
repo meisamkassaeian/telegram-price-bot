@@ -1,73 +1,57 @@
 import os
 import json
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
+from telegram.update import Update
 
 DATA_FILE = "data.json"
+CHANNEL_ID = os.getenv("CHANNEL_ID")  # مثلا @yourchannelusername
 
-# ذخیره و خواندن داده‌ها
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-# تعیین نرخ درهم
+# تنظیم قیمت درهم
 def set_dirham(update: Update, context: CallbackContext):
-    if len(context.args) != 1:
-        update.message.reply_text("لطفا مقدار درهم را وارد کنید. مثال: /setdirham 12000")
-        return
     try:
-        price = float(context.args[0])
-        data = load_data()
-        data["dirham"] = price
-        save_data(data)
-        update.message.reply_text(f"نرخ درهم به {price} تومان تنظیم شد.")
-    except ValueError:
-        update.message.reply_text("لطفا عدد معتبر وارد کنید.")
+        rate = float(context.args[0])
+        with open(DATA_FILE, "w") as f:
+            json.dump({"dirham": rate}, f)
+        update.message.reply_text(f"قیمت درهم روی {rate} تنظیم شد ✅")
+    except Exception as e:
+        update.message.reply_text(f"خطا: {e}")
 
-# افزودن محصول
+# ارسال محصول به کانال با دکمه
 def add_product(update: Update, context: CallbackContext):
-    if len(context.args) < 2:
-        update.message.reply_text("لطفا نام محصول و ضریب را وارد کنید. مثال: /sendproduct ساعت_طلایی 3.5")
-        return
     try:
-        name = context.args[0]
-        coefficient = float(context.args[1])
-        description = " ".join(context.args[2:]) if len(context.args) > 2 else ""
-        data = load_data()
-        if "products" not in data:
-            data["products"] = {}
-        data["products"][name] = {"coefficient": coefficient, "description": description}
-        save_data(data)
+        text = update.message.text.split(" ", 3)  # /sendproduct نام محصول ضریب توضیح
+        if len(text) < 4:
+            update.message.reply_text("فرمت صحیح: /sendproduct نام ضریب توضیح")
+            return
 
-        keyboard = [
-            [InlineKeyboardButton("💰 محاسبه قیمت", callback_data=name)]
-        ]
+        _, name, factor, description = text
+        factor = float(factor)
+
+        keyboard = [[InlineKeyboardButton("محاسبه قیمت", callback_data=factor)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        update.message.reply_text(f"{name}\n{description}", reply_markup=reply_markup)
-    except ValueError:
-        update.message.reply_text("ضریب باید عدد باشد.")
 
-# محاسبه قیمت هنگام کلیک روی دکمه
+        context.bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=f"محصول: {name}\nتوضیح: {description}\nضریب: {factor}",
+            reply_markup=reply_markup
+        )
+
+        update.message.reply_text("محصول با موفقیت به کانال ارسال شد ✅")
+    except Exception as e:
+        update.message.reply_text(f"خطا: {e}")
+
+# محاسبه قیمت هنگام زدن دکمه
 def calculate_price(update: Update, context: CallbackContext):
     query = update.callback_query
-    if not query:
-        return
-    product_name = query.data
-    data = load_data()
-    dirham = data.get("dirham")
-    if not dirham:
-        query.answer("نرخ درهم تنظیم نشده!", show_alert=True)
-        return
-    product = data.get("products", {}).get(product_name)
-    if not product:
-        query.answer("محصول یافت نشد!", show_alert=True)
-        return
+    query.answer()
 
-    price = product["coefficient"] * dirham
-    query.answer(text=f"قیمت {product_name}: {price:,} تومان", show_alert=True)
+    try:
+        with open(DATA_FILE, "r") as f:
+            data = json.load(f)
+        dirham_price = data.get("dirham", 0)
+        factor = float(query.data)
+        total_price = dirham_price * factor
+        query.message.reply_text(f"قیمت به روز: {total_price}")
+    except Exception as e:
+        query.message.reply_text(f"خطا در محاسبه قیمت: {e}")
