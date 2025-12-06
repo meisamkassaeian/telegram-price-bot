@@ -84,4 +84,4 @@ def calculate_price(update: Update, context: CallbackContext):
 
     price = dirham_price * product["coef"]
     rounded_price = int(round(price, -5))  # رند به نزدیک‌ترین صدگان و عدد صحیح
-    query.answer(f"قیمت {product_name}: {rounded_price}", show_alert=True)
+    query.answer(f"قیمت {product_name}: {rounded_price} هزار تومان", show_alert=True)
