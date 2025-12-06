@@ -1,11 +1,12 @@
 import os
 from flask import Flask, request
-from telegram.ext import Dispatcher, CallbackQueryHandler
 from telegram import Bot
-from bot import calculate_price, send_product, set_dirham
+from telegram.ext import Dispatcher, CommandHandler, CallbackQueryHandler
+from bot import send_product, calculate_price, set_dirham
 
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 bot = Bot(TOKEN)
 app = Flask(__name__)
@@ -13,6 +14,7 @@ app = Flask(__name__)
 # Dispatcher
 dp = Dispatcher(bot, None, workers=0)
 dp.add_handler(CallbackQueryHandler(calculate_price))
+dp.add_handler(CommandHandler("setdirham", set_dirham))
 
 @app.route("/")
 def home():
@@ -20,11 +22,7 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    from telegram import Update
-    import json
-
-    data = json.loads(request.data)
-    update = Update.de_json(data, bot)
+    update = bot.update_queue.from_json(request.data.decode("utf-8"))
     dp.process_update(update)
     return "OK", 200
 
@@ -34,6 +32,11 @@ def set_webhook():
     bot.set_webhook(url)
     return f"Webhook set to {url}"
 
+# دستور آزمایشی برای ارسال پست
+@app.route("/sendtest")
+def send_test_post():
+    send_product(bot, CHANNEL_ID, "محصول جدید: ساعت طلایی", 3.5)
+    return "Post sent!"
+
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
