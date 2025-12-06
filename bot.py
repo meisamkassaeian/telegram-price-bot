@@ -1,38 +1,68 @@
-import os
 import json
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
 
 DATA_FILE = "data.json"
 
-# بارگذاری قیمت درهم
 def load_data():
-    if not os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "w") as f:
-            json.dump({"dirham": 1}, f)
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"dirham": 1, "products": []}
 
 def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
-# بروزرسانی قیمت درهم
 def set_dirham(update: Update, context: CallbackContext):
-    if len(context.args) != 1:
-        update.message.reply_text("لطفاً یک عدد برای قیمت درهم وارد کنید.")
+    if not context.args:
+        update.message.reply_text("لطفاً قیمت درهم را وارد کنید.")
         return
     try:
-        value = float(context.args[0])
+        dirham_price = float(context.args[0])
+        data = load_data()
+        data["dirham"] = dirham_price
+        save_data(data)
+        update.message.reply_text(f"✅ قیمت درهم به {dirham_price} تغییر کرد.")
     except ValueError:
-        update.message.reply_text("مقدار معتبر نیست.")
-        return
-    data = load_data()
-    data["dirham"] = value
-    save_data(data)
-    update.message.reply_text(f"قیمت درهم به {value} بروزرسانی شد.")
+        update.message.reply_text("❌ مقدار نامعتبر است، لطفاً عدد وارد کنید.")
 
-# تابع ارسال محصول به کانال
-def send_product(bot, channel_id, name, coef, desc):
+def send_product(update: Update, context: CallbackContext):
+    if len(context.args) < 3:
+        update.message.reply_text("❌ دستور اشتباه است. فرمت: /sendproduct نام_محصول ضریب توضیح")
+        return
+    try:
+        name = context.args[0]
+        coef = float(context.args[1])
+        description = " ".join(context.args[2:])
+    except ValueError:
+        update.message.reply_text("❌ ضریب باید عدد باشد.")
+        return
+
     data = load_data()
-    dirham_price = data.get(_
+    products = data.get("products", [])
+    product = {"name": name, "coef": coef, "description": description}
+    products.append(product)
+    data["products"] = products
+    save_data(data)
+
+    # ایجاد دکمه inline برای محاسبه قیمت
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 محاسبه قیمت", callback_data=json.dumps({"coef": coef}))]
+    ])
+    context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"📦 محصول: {name}\n{description}",
+        reply_markup=keyboard
+    )
+
+def calculate_price(update: Update, context: CallbackContext):
+    query = update.callback_query
+    if not query:
+        return
+    data = json.loads(query.data)
+    coef = data.get("coef", 1)
+    dirham = load_data().get("dirham", 1)
+    price = coef * dirham
+    query.answer(text=f"💵 قیمت امروز: {price:.2f} تومان", show_alert=True)
