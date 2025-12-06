@@ -4,65 +4,63 @@ from telegram.ext import CallbackContext
 
 DATA_FILE = "data.json"
 
-
 def load_data():
     try:
         with open(DATA_FILE, "r") as f:
             return json.load(f)
-    except:
-        return {"derham": 10000, "products": {}}
-
+    except FileNotFoundError:
+        return {"dirham": 0, "products": {}}
 
 def save_data(data):
     with open(DATA_FILE, "w") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(data, f, indent=4)
 
-
-# فرمان /setprice <price>
-def set_price(update: Update, context: CallbackContext):
-    if len(context.args) == 0:
-        update.message.reply_text("❗ قیمت درهم را وارد کنید. مثال:\n/setprice 15000")
+# تنظیم نرخ درهم
+def set_dirham(update: Update, context: CallbackContext):
+    if len(context.args) != 1:
+        update.message.reply_text("استفاده: /setdirham 10.5")
         return
+    try:
+        rate = float(context.args[0])
+        data = load_data()
+        data["dirham"] = rate
+        save_data(data)
+        update.message.reply_text(f"نرخ درهم به روز شد: {rate}")
+    except ValueError:
+        update.message.reply_text("عدد معتبر وارد کنید.")
 
-    price = int(context.args[0])
-    data = load_data()
-    data["derham"] = price
-    save_data(data)
+# ارسال پیام محصول با دکمه
+def send_product(update: Update, context: CallbackContext):
+    if len(context.args) < 2:
+        update.message.reply_text("استفاده: /send <ضریب> <متن پیام>")
+        return
+    try:
+        factor = float(context.args[0])
+        text = " ".join(context.args[1:])
+        data = load_data()
+        # پیام را در کانال ارسال می‌کنیم
+        keyboard = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("💰 محاسبه قیمت", callback_data=str(factor))]]
+        )
+        context.bot.send_message(
+            chat_id=context.bot_data.get("channel_id") or update.effective_chat.id,
+            text=text,
+            reply_markup=keyboard
+        )
+        # ذخیره ضریب در data.json
+        data["products"][text] = factor
+        save_data(data)
+        update.message.reply_text("پیام ارسال شد ✅")
+    except ValueError:
+        update.message.reply_text("ضریب معتبر وارد کنید.")
 
-    update.message.reply_text(f"✔ قیمت درهم تنظیم شد: {price:,} ریال")
-
-
-# وقتی کاربر روی دکمه محاسبه قیمت بزند
+# محاسبه قیمت وقتی دکمه زده شد
 def calculate_price(update: Update, context: CallbackContext):
     query = update.callback_query
-    query.answer()
-
-    product_id = query.data.split("_")[1]
+    factor = float(query.data)
     data = load_data()
-
-    derham = data["derham"]
-    product = data["products"].get(product_id)
-
-    if not product:
-        query.edit_message_text("❗ محصول یافت نشد.")
-        return
-
-    price = derham * product["rate"]
-
+    price = factor * data.get("dirham", 0)
+    query.answer()
     query.edit_message_text(
-        f"💻 {product['name']}\n"
-        f"➖➖➖➖\n"
-        f"💰 قیمت نهایی: {price:,} ریال"
+        text=f"{query.message.text}\n\n💰 قیمت به روز: {price}"
     )
-
-
-# ساخت پیام و دکمه برای کانال
-def build_product_message(name, rate, product_id):
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔢 محاسبه قیمت", callback_data=f"calc_{product_id}")]
-    ])
-
-    text = f"💻 *{name}*\n" \
-           f"ضریب قیمت: {rate}"
-
-    return text, keyboard
