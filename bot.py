@@ -1,41 +1,44 @@
 import json
-import os
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import CallbackContext
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-DATA_FILE = "data.json"
+# مسیر فایل ذخیره نرخ درهم
+DIRHAM_FILE = "dirham.json"
 
-# ثبت قیمت درهم روزانه
-def set_dirham(update: Update, context: CallbackContext):
+def load_dirham():
     try:
-        value = float(context.args[0])
-        data = {"dirham": value}
-        with open(DATA_FILE, "w") as f:
-            json.dump(data, f)
-        update.message.reply_text(f"قیمت درهم روی {value} تنظیم شد.")
-    except (IndexError, ValueError):
-        update.message.reply_text("لطفا عدد صحیح وارد کنید: /setdirham 10.5")
+        with open(DIRHAM_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)["rate"]
+    except:
+        return 0
 
-# ارسال پست با ضریب محصول
-def send_product(bot, chat_id, title, coefficient):
-    keyboard = [
-        [InlineKeyboardButton("محاسبه قیمت", callback_data=f"price_{coefficient}")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    bot.send_message(chat_id=chat_id, text=title, reply_markup=reply_markup)
+def set_dirham(rate):
+    """تنظیم نرخ روزانه درهم"""
+    with open(DIRHAM_FILE, "w", encoding="utf-8") as f:
+        json.dump({"rate": rate}, f)
 
-# محاسبه قیمت و پاسخ به کاربر
-def calculate_price(update: Update, context: CallbackContext):
+def calculate_price(update, context):
+    """زمانی که کاربر دکمه را می‌زند"""
     query = update.callback_query
     query.answer()
+    factor = float(query.data)  # داده‌ی ضریب محصول
+    rate = load_dirham()
+    price = factor * rate
+    query.edit_message_text(
+        f"💰 قیمت محصول: {price:,.2f} تومان"
+    )
+
+def send_product(bot, channel_id, name, factor, description):
+    """ارسال محصول به کانال با دکمه محاسبه قیمت"""
+    button = InlineKeyboardButton(
+        text="💲 محاسبه قیمت",
+        callback_data=str(factor)
+    )
+    markup = InlineKeyboardMarkup([[button]])
     
-    try:
-        data = query.data
-        coefficient = float(data.split("_")[1])
-        with open(DATA_FILE, "r") as f:
-            dirham_data = json.load(f)
-        dirham = dirham_data.get("dirham", 0)
-        price = coefficient * dirham
-        query.edit_message_text(f"قیمت روز محصول: {price}")
-    except Exception as e:
-        query.edit_message_text(f"خطا در محاسبه قیمت: {e}")
+    message = f"🛒 *{name}*\n\n{description}"
+    bot.send_message(
+        chat_id=channel_id,
+        text=message,
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
