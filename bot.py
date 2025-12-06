@@ -40,7 +40,7 @@ def add_product(bot, name: str, coef: float, description: str):
         json.dump(data, f)
 
     keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton(f"محاسبه قیمت این کالا💰", callback_data=name)
+        InlineKeyboardButton(f"محاسبه قیمت بروز این کالا💰", callback_data=name)
     ]])
     bot.send_message(chat_id=CHANNEL_ID, text=description, reply_markup=keyboard)
 
