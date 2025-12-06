@@ -1,44 +1,63 @@
 import json
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackContext
 
-# مسیر فایل ذخیره نرخ درهم
-DIRHAM_FILE = "dirham.json"
+DATA_FILE = "data.json"
 
-def load_dirham():
+# Load / Save data
+def load_data():
     try:
-        with open(DIRHAM_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)["rate"]
-    except:
-        return 0
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
 
-def set_dirham(rate):
-    """تنظیم نرخ روزانه درهم"""
-    with open(DIRHAM_FILE, "w", encoding="utf-8") as f:
-        json.dump({"rate": rate}, f)
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-def calculate_price(update, context):
-    """زمانی که کاربر دکمه را می‌زند"""
-    query = update.callback_query
-    query.answer()
-    factor = float(query.data)  # داده‌ی ضریب محصول
-    rate = load_dirham()
-    price = factor * rate
-    query.edit_message_text(
-        f"💰 قیمت محصول: {price:,.2f} تومان"
-    )
+# Set Dirham price
+def set_dirham(update: Update, context: CallbackContext):
+    if not context.args:
+        update.message.reply_text("لطفاً قیمت درهم را وارد کنید: /setdirham 1.23")
+        return
+    try:
+        price = float(context.args[0])
+        data = load_data()
+        data["dirham"] = price
+        save_data(data)
+        update.message.reply_text(f"قیمت درهم به {price} به روز شد.")
+    except ValueError:
+        update.message.reply_text("قیمت معتبر نیست!")
 
-def send_product(bot, channel_id, name, factor, description):
-    """ارسال محصول به کانال با دکمه محاسبه قیمت"""
-    button = InlineKeyboardButton(
-        text="💲 محاسبه قیمت",
-        callback_data=str(factor)
-    )
-    markup = InlineKeyboardMarkup([[button]])
-    
-    message = f"🛒 *{name}*\n\n{description}"
+# Send product to channel
+def send_product(bot, channel_id, name, coef, desc):
+    keyboard = [
+        [InlineKeyboardButton("محاسبه قیمت", callback_data=f"{coef}")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     bot.send_message(
         chat_id=channel_id,
-        text=message,
-        reply_markup=markup,
-        parse_mode="Markdown"
+        text=f"محصول: {name}\nتوضیحات: {desc}",
+        reply_markup=reply_markup
     )
+
+# Callback for calculating price
+def calculate_price(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()  # acknowledge callback
+
+    try:
+        coef = float(query.data)
+    except ValueError:
+        query.answer(text="خطا در محاسبه قیمت", show_alert=True)
+        return
+
+    data = load_data()
+    dirham = data.get("dirham")
+    if not dirham:
+        query.answer(text="قیمت درهم هنوز تعیین نشده است", show_alert=True)
+        return
+
+    price = coef * dirham
+    query.answer(text=f"قیمت امروز: {price:.2f}", show_alert=True)
