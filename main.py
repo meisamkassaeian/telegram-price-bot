@@ -1,21 +1,20 @@
 import os
 from flask import Flask, request
-from telegram import Bot
 from telegram.ext import Dispatcher, CommandHandler, CallbackQueryHandler
-from bot import send_product, calculate_price, set_dirham
+from telegram import Bot
+from bot import calculate_price, add_product, set_dirham
 
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 bot = Bot(TOKEN)
 app = Flask(__name__)
 
+# Dispatcher
 dp = Dispatcher(bot, None, workers=0)
-
-# Handlers
-dp.add_handler(CommandHandler("setdirham", set_dirham))
+dp.add_handler(CommandHandler("addproduct", add_product))
 dp.add_handler(CallbackQueryHandler(calculate_price))
+dp.add_handler(CommandHandler("setdirham", set_dirham))  # برای بروزرسانی قیمت درهم
 
 @app.route("/")
 def home():
@@ -23,7 +22,8 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    update = bot.update_queue.from_json(request.data.decode("utf-8"))
+    from telegram import Update
+    update = Update.de_json(request.get_json(force=True), bot)
     dp.process_update(update)
     return "OK", 200
 
@@ -32,11 +32,6 @@ def set_webhook():
     url = f"{WEBHOOK_URL}/webhook"
     bot.set_webhook(url)
     return f"Webhook set to {url}"
-
-@app.route("/sendproduct/<name>/<float:coef>/<desc>")
-def test_send_product(name, coef, desc):
-    send_product(bot, CHANNEL_ID, name, coef, desc)
-    return "Product sent!"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
