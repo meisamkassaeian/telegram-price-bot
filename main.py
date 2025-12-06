@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CallbackQueryHandler, CommandHandler
+from telegram import Bot
+from telegram.ext import Dispatcher, CommandHandler, CallbackQueryHandler
 from bot import add_product, calculate_price, set_dirham
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -11,9 +11,9 @@ bot = Bot(TOKEN)
 dp = Dispatcher(bot, None, workers=0)
 
 # Handlers
-dp.add_handler(CallbackQueryHandler(calculate_price))
 dp.add_handler(CommandHandler("setdirham", set_dirham))
 dp.add_handler(CommandHandler("sendproduct", add_product))
+dp.add_handler(CallbackQueryHandler(calculate_price))
 
 app = Flask(__name__)
 
@@ -23,9 +23,13 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
+    from telegram import Update
+    from telegram.ext import Dispatcher
+    import json
+
+    update = Update.de_json(json.loads(request.data), bot)
     dp.process_update(update)
-    return "OK"
+    return "OK", 200
 
 @app.route("/setwebhook")
 def set_webhook():
