@@ -1,57 +1,65 @@
-import os
 import json
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import os
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
-from telegram.update import Update
 
 DATA_FILE = "data.json"
-CHANNEL_ID = os.getenv("CHANNEL_ID")  # مثلا @yourchannelusername
 
-# تنظیم قیمت درهم
+# ذخیره ضریب درهم
 def set_dirham(update: Update, context: CallbackContext):
     try:
-        rate = float(context.args[0])
+        value = float(context.args[0])
+        data = {"dirham": value, "products": {}}
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r") as f:
+                old_data = json.load(f)
+            old_data["dirham"] = value
+            data = old_data
         with open(DATA_FILE, "w") as f:
-            json.dump({"dirham": rate}, f)
-        update.message.reply_text(f"قیمت درهم روی {rate} تنظیم شد ✅")
-    except Exception as e:
-        update.message.reply_text(f"خطا: {e}")
+            json.dump(data, f)
+        update.message.reply_text(f"قیمت درهم تنظیم شد: {value}")
+    except (IndexError, ValueError):
+        update.message.reply_text("لطفا عدد معتبر وارد کنید. مثال: /setdirham 3.5")
 
-# ارسال محصول به کانال با دکمه
+# اضافه کردن محصول
 def add_product(update: Update, context: CallbackContext):
     try:
-        text = update.message.text.split(" ", 3)  # /sendproduct نام محصول ضریب توضیح
-        if len(text) < 4:
-            update.message.reply_text("فرمت صحیح: /sendproduct نام ضریب توضیح")
-            return
+        name = context.args[0]
+        coef = float(context.args[1])
+        description = " ".join(context.args[2:]) if len(context.args) > 2 else ""
+        if os.path.exists(DATA_FILE):
+            with open(DATA_FILE, "r") as f:
+                data = json.load(f)
+        else:
+            data = {"dirham": 0, "products": {}}
 
-        _, name, factor, description = text
-        factor = float(factor)
+        message = f"{name}\n{description}"
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("محاسبه قیمت", callback_data=name)
+        ]])
 
-        keyboard = [[InlineKeyboardButton("محاسبه قیمت", callback_data=factor)]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        sent_message = update.message.reply_text(message, reply_markup=keyboard)
 
-        context.bot.send_message(
-            chat_id=CHANNEL_ID,
-            text=f"محصول: {name}\nتوضیح: {description}\nضریب: {factor}",
-            reply_markup=reply_markup
+        data["products"][name] = {"coef": coef}
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f)
+    except (IndexError, ValueError):
+        update.message.reply_text(
+            "مثال استفاده: /addproduct ساعت_طلایی 3.5 محصول_ویژه"
         )
 
-        update.message.reply_text("محصول با موفقیت به کانال ارسال شد ✅")
-    except Exception as e:
-        update.message.reply_text(f"خطا: {e}")
-
-# محاسبه قیمت هنگام زدن دکمه
+# محاسبه قیمت و نمایش popup
 def calculate_price(update: Update, context: CallbackContext):
     query = update.callback_query
-    query.answer()
-
-    try:
+    query.answer()  # جواب دادن به کلیک بدون ارسال پیام جدید
+    name = query.data
+    if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
             data = json.load(f)
-        dirham_price = data.get("dirham", 0)
-        factor = float(query.data)
-        total_price = dirham_price * factor
-        query.message.reply_text(f"قیمت به روز: {total_price}")
-    except Exception as e:
-        query.message.reply_text(f"خطا در محاسبه قیمت: {e}")
+        dirham = data.get("dirham", 0)
+        product = data["products"].get(name)
+        if product:
+            price = product["coef"] * dirham
+            query.answer(f"قیمت {name}: {price:.2f}", show_alert=True)
+        else:
+            query.answer("محصول پیدا نشد.", show_alert=True)
