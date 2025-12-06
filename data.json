@@ -1,7 +1,4 @@
 {
-  "derham": 15000,
-  "products": {
-    "laptop": 3.7,
-    "mouse": 1.2
-  }
+    "dirham": 10.5,
+    "products": {}
 }
