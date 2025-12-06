@@ -4,7 +4,7 @@ from telegram.ext import Dispatcher, CommandHandler, CallbackQueryHandler
 from telegram import Bot
 from bot import set_price, calculate_price
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("8285442997:AAGb2BO0PVlZN5CFqhCRrywIKr3rKzcUe3M")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # مثل https://mybot.onrender.com/webhook
 
 bot = Bot(TOKEN)
