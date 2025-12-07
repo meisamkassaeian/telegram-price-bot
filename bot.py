@@ -5,13 +5,16 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
 
 # مقداردهی Firebase
-cred = credentials.Certificate("/etc/secrets/firebase_key.json")  # مسیر Secret File
+cred = credentials.Certificate("/etc/secrets/firebase_key.json")
 firebase_admin.initialize_app(cred, {
-    'databaseURL': os.getenv("FIREBASE_URL")  # https://telegram-bot-pric-default-rtdb.firebaseio.com/
+    'databaseURL': os.getenv("FIREBASE_URL")
 })
 
 # لیست ادمین‌ها
-ADMINS = [109597263]  # آی‌دی تلگرام ادمین‌ها را قرار بده
+ADMINS = [109597263]  # آی‌دی تلگرام ادمین‌ها
+
+# کانال
+CHANNEL_ID = os.getenv("CHANNEL_ID")  # مثل @yourchannelusername
 
 def set_dirham(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
@@ -45,9 +48,37 @@ def add_product(update: Update, context: CallbackContext):
         update.message.reply_text("❌ فرمت اشتباه است. /addproduct نام محصول ضریب توضیح")
 
 
+def send_product(update: Update, context: CallbackContext):
+    """فرستادن محصول به کانال با دکمه inline"""
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        update.message.reply_text("❌ اجازه ندارید.")
+        return
+    try:
+        name = context.args[0]
+        product_ref = db.reference(f"products/{name}")
+        product = product_ref.get()
+        if not product:
+            update.message.reply_text("❌ محصول پیدا نشد.")
+            return
+
+        description = product.get("description", "")
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💰 مشاهده قیمت آنلاین این کالا", callback_data=name)]])
+        
+        # ارسال به کانال
+        context.bot.send_message(
+            chat_id=CHANNEL_ID,
+            text=f"📦 {name}\n{description}",
+            reply_markup=keyboard
+        )
+        update.message.reply_text(f"✅ محصول {name} به کانال ارسال شد.")
+    except IndexError:
+        update.message.reply_text("❌ فرمت اشتباه است. /sendproduct نام_محصول")
+
+
 def calculate_price(update: Update, context: CallbackContext):
     query = update.callback_query
-    product_name = query.data  # فرض می‌کنیم data همان نام محصول است
+    product_name = query.data
     product_ref = db.reference(f"products/{product_name}")
     product = product_ref.get()
     if not product:
@@ -57,6 +88,7 @@ def calculate_price(update: Update, context: CallbackContext):
     if dirham_price is None:
         query.answer("❌ قیمت درهم تنظیم نشده", show_alert=True)
         return
+
+    # رند کردن قیمت به عدد صحیح
     price = int(product["factor"] * dirham_price)
-    # رند کردن به عدد صحیح و حذف ممیز
-    query.answer(f"💰 قیمت این کالا: {price} هزار تومان", show_alert=True)
+    query.answer(f"💰 قیمت بروز این کالا: {price} هزار تومان", show_alert=True)
