@@ -12,7 +12,7 @@ firebase_admin.initialize_app(cred, {
 })
 
 # --- Admins ---
-ADMINS = [123456789]  # اینجا آی‌دی ادمین‌ها را قرار بده
+ADMINS = [109597263]  # اینجا آی‌دی ادمین‌ها را قرار بده
 
 # --- Functions ---
 def set_dirham(value: float):
@@ -78,5 +78,5 @@ def calculate_price(update: Update, context: CallbackContext):
 
     price = product["coefficient"] * dirham_price
     # رند کردن به صدگان، دهگان، یکان
-    price = int(round(price, -0))
-    query.answer(f"💵 قیمت: {price} تومان", show_alert=True)
+    price = int(round(price, -2))
+    query.answer(f"💵 قیمت بروز این کالا: {price} هزار تومان", show_alert=True)
