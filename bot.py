@@ -17,7 +17,7 @@ def save_data(data):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 # --------------------- بررسی ادمین ---------------------
-ADMINS = [meisamkassaeian]  # تو این لیست آی‌دی ادمین‌ها بذار
+ADMINS = [109597263]  # تو این لیست آی‌دی ادمین‌ها بذار
 
 def is_admin(update: Update):
     user_id = update.effective_user.id
