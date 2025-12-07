@@ -1,82 +1,81 @@
 import os
-import firebase_admin
-from firebase_admin import credentials, db
+import json
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
+import firebase_admin
+from firebase_admin import credentials, db
 
-# --- Firebase setup ---
-cred_path = os.getenv("FIREBASE_KEY_PATH", "/etc/secrets/firebase_key.json")
-cred = credentials.Certificate(cred_path)
-firebase_admin.initialize_app(cred, {
-    "databaseURL": os.getenv("FIREBASE_DB_URL")
-})
-
-# --- Admins ---
-ADMINS = [109597263]  # اینجا آی‌دی ادمین‌ها را قرار بده
-
-# --- Functions ---
-def set_dirham(value: float):
-    ref = db.reference("/dirham")
-    ref.set(value)
-
-def add_and_send_product(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
-    if user_id not in ADMINS:
-        update.message.reply_text("❌ شما دسترسی ندارید.")
-        return
-
-    args = context.args
-    if len(args) < 3:
-        update.message.reply_text("❌ دستور اشتباه. فرمت:\n/addproduct نام_محصول ضریب توضیح")
-        return
-
-    name = args[0]
-    try:
-        coefficient = float(args[1])
-    except ValueError:
-        update.message.reply_text("❌ ضریب باید عدد باشد.")
-        return
-
-    description = " ".join(args[2:])
-
-    # 1️⃣ ذخیره محصول در Firebase
-    ref = db.reference("/products")
-    ref.child(name).set({
-        "coefficient": coefficient,
-        "description": description
+# تنظیم Firebase
+FIREBASE_DB_URL = os.getenv("FIREBASE_DB_URL")
+cred = credentials.Certificate("/etc/secrets/firebase_key.json")
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred, {
+        "databaseURL": FIREBASE_DB_URL
     })
 
-    # 2️⃣ ارسال پست به کانال
-    channel_id = os.getenv("CHANNEL_ID")
-    keyboard = [[InlineKeyboardButton("💰 محاسبه قیمت", callback_data=name)]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+CHANNEL_ID = os.getenv("CHANNEL_ID")
 
-    context.bot.send_message(
-        chat_id=channel_id,
-        text=f"محصول جدید: {name}\n{description}\nبرای مشاهده قیمت روی دکمه زیر کلیک کنید.",
-        reply_markup=reply_markup
-    )
-    update.message.reply_text("✅ محصول اضافه شد و پست ارسال شد.")
+def set_dirham(update: Update, context: CallbackContext):
+    """دستور تلگرامی: /setdirham قیمت"""
+    args = context.args
+    if len(args) != 1:
+        update.message.reply_text("فرمت: /setdirham قیمت")
+        return
+    try:
+        price = float(args[0])
+    except ValueError:
+        update.message.reply_text("قیمت باید عدد باشد")
+        return
+
+    ref = db.reference("/")
+    ref.update({"dirham": price})
+    update.message.reply_text(f"قیمت درهم به روز شد: {price}")
+
+def add_product(bot, name: str, coef: float, description: str):
+    """افزودن محصول و ارسال پیام به کانال با دکمه Inline"""
+    ref = db.reference(f"/products/{name}")
+    ref.set({"coef": coef})
+
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
+        "محاسبه قیمت 💰", callback_data=name
+    )]])
+    bot.send_message(chat_id=CHANNEL_ID, text=description, reply_markup=keyboard)
+
+def add_product_command(update: Update, context: CallbackContext):
+    """دستور تلگرامی: /addproduct نام ضریب توضیح"""
+    args = context.args
+    if len(args) < 3:
+        update.message.reply_text("فرمت: /addproduct نام ضریب توضیح")
+        return
+    name = args[0]
+    try:
+        coef = float(args[1])
+    except ValueError:
+        update.message.reply_text("ضریب باید عدد باشد")
+        return
+    description = " ".join(args[2:])
+    add_product(context.bot, name, coef, description)
+    update.message.reply_text(f"محصول {name} به کانال فرستاده شد!")
 
 def calculate_price(update: Update, context: CallbackContext):
+    """زمانی که کاربر روی دکمه کلیک می‌کند"""
     query = update.callback_query
-    query.answer()
-
     product_name = query.data
 
-    ref_product = db.reference(f"/products/{product_name}")
-    product = ref_product.get()
-    if not product:
-        query.edit_message_text("❌ محصول یافت نشد.")
-        return
+    ref = db.reference("/")
+    data = ref.get() or {}
 
-    dirham_ref = db.reference("/dirham")
-    dirham_price = dirham_ref.get()
+    dirham_price = data.get("dirham")
     if dirham_price is None:
-        query.edit_message_text("❌ قیمت درهم تنظیم نشده.")
+        query.answer("قیمت درهم ثبت نشده", show_alert=True)
         return
 
-    price = product["coefficient"] * dirham_price
-    # رند کردن به صدگان، دهگان، یکان
-    price = int(round(price, -2))
-    query.answer(f"💵 قیمت بروز این کالا: {price} هزار تومان", show_alert=True)
+    product = data.get("products", {}).get(product_name)
+    if not product:
+        query.answer("محصول پیدا نشد", show_alert=True)
+        return
+
+    price = dirham_price * product["coef"]
+    # رند به نزدیک‌ترین صدگان و عدد صحیح
+    rounded_price = int(round(price, -2))
+    query.answer(f"قیمت فعلی این کالا: {rounded_price} هزار تومان", show_alert=True)
