@@ -4,7 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, db
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
-ADMINS = [109597263]  # جایگزین با Telegram user ID ادمین‌ها
+ADMINS = [109597263,68665096]  # جایگزین با Telegram user ID ادمین‌ها
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 DATA_FILE = "data.json"
 
