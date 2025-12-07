@@ -75,4 +75,4 @@ def calculate_price(update: Update, context: CallbackContext):
     # رند کردن به نزدیک‌ترین صدگان
     rounded_price1 = int(round(price, -2))
     rounded_price = f"{rounded_price1:,}"       # خروجی: '123,000'
-    query.answer(f"قیمت فعلی این کالا💰: {rounded_price} هزار تومان", show_alert=True)
+    query.answer(f"قیمت فعلی این کالا💰: {rounded_price} تومان", show_alert=True)
