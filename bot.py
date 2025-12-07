@@ -1,87 +1,86 @@
-import os
 import json
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
 
 DATA_FILE = "data.json"
-CHANNEL_ID = os.getenv("CHANNEL_ID")
 
-def set_dirham_command(update: Update, context: CallbackContext):
-    """دستور تلگرامی: /setdirham قیمت"""
-    args = context.args
-    if len(args) != 1:
-        update.message.reply_text("فرمت: /setdirham قیمت")
-        return
+# --------------------- فایل JSON ---------------------
+def load_data():
     try:
-        price = float(args[0])
-    except ValueError:
-        update.message.reply_text("قیمت باید عدد باشد")
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {"dirham_price": 0, "products": {}}
+
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+
+# --------------------- بررسی ادمین ---------------------
+ADMINS = [meisamkassaeian]  # تو این لیست آی‌دی ادمین‌ها بذار
+
+def is_admin(update: Update):
+    user_id = update.effective_user.id
+    return user_id in ADMINS
+
+# --------------------- تنظیم قیمت درهم ---------------------
+def set_dirham(update: Update, context: CallbackContext):
+    if not is_admin(update):
+        update.message.reply_text("❌ شما اجازه ندارید.")
         return
 
-    data = {}
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            data = json.load(f)
-    data["dirham"] = price
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
-    update.message.reply_text(f"قیمت درهم به روز شد: {price}")
-
-def add_product(bot, name: str, coef: float, description: str):
-    """افزودن محصول و ارسال پیام به کانال با دکمه Inline"""
-    data = {}
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            data = json.load(f)
-    if "products" not in data:
-        data["products"] = {}
-    data["products"][name] = {"coef": coef}
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f)
-
-    keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton(f"محاسبه قیمت بروز این کالا💰", callback_data=name)
-    ]])
-    bot.send_message(chat_id=CHANNEL_ID, text=description, reply_markup=keyboard)
-
-def add_product_command(update: Update, context: CallbackContext):
-    """دستور تلگرامی: /addproduct نام ضریب توضیح"""
-    args = context.args
-    if len(args) < 3:
-        update.message.reply_text("فرمت: /addproduct نام ضریب توضیح")
-        return
-    name = args[0]
     try:
-        coef = float(args[1])
-    except ValueError:
-        update.message.reply_text("ضریب باید عدد باشد")
+        price = float(context.args[0])
+    except:
+        update.message.reply_text("❌ قیمت معتبر نیست.")
         return
-    description = " ".join(args[2:])
-    add_product(context.bot, name, coef, description)
-    update.message.reply_text(f"محصول {name} به کانال فرستاده شد!")
 
+    data = load_data()
+    data["dirham_price"] = price
+    save_data(data)
+
+    update.message.reply_text(f"✅ قیمت درهم به {price} تغییر کرد.")
+
+# --------------------- اضافه کردن محصول ---------------------
+def add_product(update: Update, context: CallbackContext):
+    if not is_admin(update):
+        update.message.reply_text("❌ شما اجازه ندارید.")
+        return
+
+    try:
+        name = context.args[0]
+        coef = float(context.args[1])
+    except:
+        update.message.reply_text("❌ فرمت صحیح: /addproduct نام_محصول ضریب")
+        return
+
+    data = load_data()
+    data["products"][name] = coef
+    save_data(data)
+
+    update.message.reply_text(f"✅ محصول {name} با ضریب {coef} اضافه شد.")
+
+# --------------------- ارسال محصول به کانال ---------------------
+def send_product(bot, channel_id, name: str, description=""):
+    data = load_data()
+    if name not in data["products"]:
+        return False
+
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("💰 محاسبه آنلاین قیمت", callback_data=name)]]
+    )
+    bot.send_message(chat_id=channel_id, text=f"{name}\n{description}", reply_markup=keyboard)
+    return True
+
+# --------------------- محاسبه قیمت ---------------------
 def calculate_price(update: Update, context: CallbackContext):
-    """زمانی که کاربر روی دکمه کلیک می‌کند"""
     query = update.callback_query
-    product_name = query.data
+    product = query.data
 
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            data = json.load(f)
-    else:
-        query.answer("قیمتی ثبت نشده", show_alert=True)
+    data = load_data()
+    if product not in data["products"]:
+        query.answer("❌ قیمت پیدا نشد", show_alert=True)
         return
 
-    dirham_price = data.get("dirham")
-    if dirham_price is None:
-        query.answer("قیمت درهم ثبت نشده", show_alert=True)
-        return
-
-    product = data.get("products", {}).get(product_name)
-    if not product:
-        query.answer("محصول پیدا نشد", show_alert=True)
-        return
-
-    price = dirham_price * product["coef"]
-    rounded_price = int(round(price, -2))  # رند به نزدیک‌ترین صدگان و عدد صحیح
-    query.answer(f"قیمت فعلی این کالا💰: {rounded_price} هزار تومان", show_alert=True)
+    price = round(data["dirham_price"] * data["products"][product])
+    query.answer(f"💰 قیمت: {price} هزار تومان", show_alert=True)
