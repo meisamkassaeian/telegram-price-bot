@@ -1,86 +1,62 @@
-import json
+import os
+import firebase_admin
+from firebase_admin import credentials, db
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
 
-DATA_FILE = "data.json"
+# مقداردهی Firebase
+cred = credentials.Certificate("/etc/secrets/firebase_key.json")  # مسیر Secret File
+firebase_admin.initialize_app(cred, {
+    'databaseURL': os.getenv("FIREBASE_URL")  # https://telegram-bot-pric-default-rtdb.firebaseio.com/
+})
 
-# --------------------- فایل JSON ---------------------
-def load_data():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {"dirham_price": 0, "products": {}}
+# لیست ادمین‌ها
+ADMINS = [109597263]  # آی‌دی تلگرام ادمین‌ها را قرار بده
 
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-# --------------------- بررسی ادمین ---------------------
-ADMINS = [109597263]  # تو این لیست آی‌دی ادمین‌ها بذار
-
-def is_admin(update: Update):
-    user_id = update.effective_user.id
-    return user_id in ADMINS
-
-# --------------------- تنظیم قیمت درهم ---------------------
 def set_dirham(update: Update, context: CallbackContext):
-    if not is_admin(update):
-        update.message.reply_text("❌ شما اجازه ندارید.")
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        update.message.reply_text("❌ اجازه ندارید.")
         return
-
     try:
         price = float(context.args[0])
-    except:
-        update.message.reply_text("❌ قیمت معتبر نیست.")
-        return
+        db.reference("dirham").set(price)
+        update.message.reply_text(f"✅ قیمت درهم به {price} تنظیم شد.")
+    except (IndexError, ValueError):
+        update.message.reply_text("❌ فرمت اشتباه است. /setdirham 10.5")
 
-    data = load_data()
-    data["dirham_price"] = price
-    save_data(data)
 
-    update.message.reply_text(f"✅ قیمت درهم به {price} تغییر کرد.")
-
-# --------------------- اضافه کردن محصول ---------------------
 def add_product(update: Update, context: CallbackContext):
-    if not is_admin(update):
-        update.message.reply_text("❌ شما اجازه ندارید.")
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        update.message.reply_text("❌ اجازه ندارید.")
         return
-
     try:
         name = context.args[0]
-        coef = float(context.args[1])
-    except:
-        update.message.reply_text("❌ فرمت صحیح: /addproduct نام_محصول ضریب")
-        return
+        factor = float(context.args[1])
+        description = " ".join(context.args[2:]) if len(context.args) > 2 else ""
+        product_ref = db.reference(f"products/{name}")
+        product_ref.set({
+            "factor": factor,
+            "description": description
+        })
+        update.message.reply_text(f"✅ محصول {name} اضافه شد.")
+    except (IndexError, ValueError):
+        update.message.reply_text("❌ فرمت اشتباه است. /addproduct نام محصول ضریب توضیح")
 
-    data = load_data()
-    data["products"][name] = coef
-    save_data(data)
 
-    update.message.reply_text(f"✅ محصول {name} با ضریب {coef} اضافه شد.")
-
-# --------------------- ارسال محصول به کانال ---------------------
-def send_product(bot, channel_id, name: str, description=""):
-    data = load_data()
-    if name not in data["products"]:
-        return False
-
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("💰 محاسبه آنلاین قیمت", callback_data=name)]]
-    )
-    bot.send_message(chat_id=channel_id, text=f"{name}\n{description}", reply_markup=keyboard)
-    return True
-
-# --------------------- محاسبه قیمت ---------------------
 def calculate_price(update: Update, context: CallbackContext):
     query = update.callback_query
-    product = query.data
-
-    data = load_data()
-    if product not in data["products"]:
+    product_name = query.data  # فرض می‌کنیم data همان نام محصول است
+    product_ref = db.reference(f"products/{product_name}")
+    product = product_ref.get()
+    if not product:
         query.answer("❌ قیمت پیدا نشد", show_alert=True)
         return
-
-    price = round(data["dirham_price"] * data["products"][product])
-    query.answer(f"💰 قیمت: {price} هزار تومان", show_alert=True)
+    dirham_price = db.reference("dirham").get()
+    if dirham_price is None:
+        query.answer("❌ قیمت درهم تنظیم نشده", show_alert=True)
+        return
+    price = int(product["factor"] * dirham_price)
+    # رند کردن به عدد صحیح و حذف ممیز
+    query.answer(f"💰 قیمت این کالا: {price} هزار تومان", show_alert=True)
