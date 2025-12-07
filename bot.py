@@ -49,7 +49,7 @@ def add_and_send_product(update: Update, context: CallbackContext):
 
     # دکمه Inline
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💰 محاسبه قیمت", callback_data=name)]
+        [InlineKeyboardButton("💰 محاسبه قیمت بروز کالا", callback_data=name)]
     ])
     bot = context.bot
     bot.send_message(chat_id=CHANNEL_ID, text=description, reply_markup=keyboard)
@@ -74,4 +74,4 @@ def calculate_price(update: Update, context: CallbackContext):
     price = dirham_price * product["coef"]
     # رند کردن به نزدیک‌ترین صدگان
     rounded_price = int(round(price, -2))
-    query.answer(f"قیمت فعلی این کالا💰: {rounded_price} تومان", show_alert=True)
+    query.answer(f"قیمت فعلی این کالا💰: {rounded_price} هزار تومان", show_alert=True)
