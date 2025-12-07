@@ -4,7 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, db
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackContext
-
+ADMINS = [109597263]  # جایگزین با Telegram user ID ادمین‌ها
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 DATA_FILE = "data.json"
 
@@ -16,31 +16,50 @@ if not firebase_admin._apps:
     })
 
 def set_dirham(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        update.message.reply_text("❌ شما دسترسی ندارید!")
+        return
+
     args = context.args
     if len(args) != 1:
         update.message.reply_text("فرمت: /setdirham قیمت")
         return
+
     try:
         price = float(args[0])
     except ValueError:
         update.message.reply_text("قیمت باید عدد باشد")
         return
 
-    ref = db.reference("/dirham")
-    ref.set(price)
-    update.message.reply_text(f"قیمت درهم به روز شد: {price}")
+    # رند کردن قیمت به نزدیک‌ترین عدد صحیح
+    rounded_price = int(round(price))
 
+    # ذخیره در Firebase
+    ref = db.reference("/dirham")
+    ref.set(rounded_price)
+
+    # نمایش قیمت با جداکننده هزارگان
+    price_str = f"{rounded_price:,}"
+    update.message.reply_text(f"✅ قیمت درهم به روز شد: {price_str} تومان")
 def add_and_send_product(update: Update, context: CallbackContext):
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        update.message.reply_text("❌ شما دسترسی ندارید!")
+        return
+
     args = context.args
     if len(args) < 3:
         update.message.reply_text("فرمت: /addproduct نام ضریب توضیح")
         return
+
     name = args[0]
     try:
         coef = float(args[1])
     except ValueError:
         update.message.reply_text("ضریب باید عدد باشد")
         return
+
     description = " ".join(args[2:])
 
     # ذخیره در Firebase
