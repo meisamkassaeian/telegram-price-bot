@@ -1,3 +1,4 @@
+print("### MAIN.PY LOADED ###")
 import os
 from flask import Flask, request
 from telegram import Bot, Update
@@ -44,7 +45,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "HELLO"
+    return "HELLO FROM DEBUG"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
