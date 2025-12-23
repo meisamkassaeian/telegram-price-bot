@@ -38,3 +38,10 @@ def set_webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT)
+
+from scripts.update_wc_price import update_prices
+
+@app.route("/test-update")
+def test_update():
+    return update_prices()
+
