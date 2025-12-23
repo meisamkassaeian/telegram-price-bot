@@ -39,9 +39,14 @@ def set_webhook():
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT)
 
-from scripts.update_wc_price import update_prices
+from flask import Flask
+app = Flask(__name__)
 
-@app.route("/test-update")
-def test_update():
-    return update_prices()
+@app.route("/")
+def home():
+    return "HELLO"
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
+
 
