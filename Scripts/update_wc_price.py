@@ -3,64 +3,62 @@ import requests
 import firebase_admin
 from firebase_admin import credentials, db
 
-# ---------- Firebase ----------
-cred = credentials.Certificate("/etc/secrets/firebase_key.json")
-firebase_admin.initialize_app(cred, {
-    "databaseURL": os.getenv("FIREBASE_DB_URL")
-})
+# --- Firebase init (فقط یکبار) ---
+if not firebase_admin._apps:
+    cred = credentials.Certificate("/etc/secrets/firebase_key.json")
+    firebase_admin.initialize_app(cred, {
+        "databaseURL": os.getenv("FIREBASE_DB_URL")
+    })
 
-# ---------- WooCommerce ----------
 WC_URL = os.getenv("WC_URL")
-CK = os.getenv("WC_CONSUMER_KEY")
-CS = os.getenv("WC_CONSUMER_SECRET")
+WC_KEY = os.getenv("WC_CONSUMER_KEY")
+WC_SECRET = os.getenv("WC_CONSUMER_SECRET")
 
-# ---------- 1. خواندن قیمت درهم ----------
-dirham = db.reference("/dirham").get()
-if not dirham:
-    raise Exception("❌ قیمت درهم پیدا نشد")
 
-# ---------- 2. پیدا کردن محصول دارای SKU ----------
-products = db.reference("/products").get()
-target = None
+def update_prices():
+    """
+    قیمت محصولات ووکامرس را بر اساس Firebase آپدیت می‌کند
+    """
+    ref = db.reference("/")
+    data = ref.get()
 
-for name, data in products.items():
-    if data.get("sku") == "DL5510":
-        target = data
-        break
+    dirham = data.get("dirham")
+    products = data.get("products", {})
 
-if not target:
-    raise Exception("❌ محصول با SKU DL5510 پیدا نشد")
+    if not dirham:
+        raise Exception("Dirham price not found")
 
-coef = target.get("coef")
+    updated = 0
 
-# ---------- 3. محاسبه قیمت ----------
-price = int(round(dirham * coef, -2))  # رند به صدگان
+    for name, p in products.items():
+        sku = p.get("sku")
+        coef = p.get("coef")
 
-print("قیمت نهایی:", price)
+        if not sku or not coef:
+            continue
 
-# ---------- 4. پیدا کردن محصول در ووکامرس ----------
-res = requests.get(
-    f"{WC_URL}/wp-json/wc/v3/products",
-    auth=(CK, CS),
-    params={"sku": "DL5510"}
-)
+        final_price = int(round(dirham * coef, -2))
 
-items = res.json()
-if not items:
-    raise Exception("❌ محصول در ووکامرس پیدا نشد")
+        # --- WooCommerce API ---
+        r = requests.get(
+            f"{WC_URL}/wp-json/wc/v3/products",
+            auth=(WC_KEY, WC_SECRET),
+            params={"sku": sku}
+        )
 
-product_id = items[0]["id"]
+        if r.status_code != 200 or not r.json():
+            continue
 
-# ---------- 5. آپدیت قیمت ----------
-update = requests.put(
-    f"{WC_URL}/wp-json/wc/v3/products/{product_id}",
-    auth=(CK, CS),
-    json={
-        "regular_price": str(price)
+        product_id = r.json()[0]["id"]
+
+        requests.put(
+            f"{WC_URL}/wp-json/wc/v3/products/{product_id}",
+            auth=(WC_KEY, WC_SECRET),
+            json={"regular_price": str(final_price)}
+        )
+
+        updated += 1
+
+    return {
+        "updated": updated
     }
-)
-
-if update.status_code == 200:
-    print("✅ قیمت با موفقیت آپدیت شد")
-else:
-    print("❌ خطا در آپدیت:", update.text)
